@@ -1,23 +1,44 @@
 /**
  * app.js
  * Entry point aplikasi.
- * Menginisialisasi state, memuat data tersimpan,
- * dan menghubungkan semua modul (data, storage, ui).
+ * Mendukung sync realtime via Firebase Firestore.
  */
 
-/* Buat state aktif dari data (deep copy agar data asli tidak termutasi) */
+/* Buat state aktif dari data (deep copy) */
 const state = CHECKLIST_DATA.map(cat => ({
   ...cat,
   collapsed: false,
   items: cat.items.map(item => ({ ...item })),
 }));
 
-/* Muat progress tersimpan dari localStorage */
-loadState(state);
+/* Flag untuk mencegah loop saat listener Firestore aktif */
+let isRemoteUpdate = false;
 
-/* Render awal */
-renderChecklist(state, handleToggle);
-updateProgress(state);
+/* --------------------------------------------------
+   INISIALISASI
+   -------------------------------------------------- */
+async function init() {
+  // Muat data dari Firestore atau localStorage
+  const saved = await loadState();
+  applyState(state, saved);
+
+  // Render awal
+  renderChecklist(state, handleToggle);
+  updateProgress(state);
+
+  // Tampilkan indikator status sync
+  showSyncStatus();
+
+  // Aktifkan realtime listener (hanya jika Firebase aktif)
+  listenState((payload) => {
+    isRemoteUpdate = true;
+    applyState(state, payload);
+    renderChecklist(state, handleToggle);
+    updateProgress(state);
+    flashSyncIndicator();
+    isRemoteUpdate = false;
+  });
+}
 
 /* --------------------------------------------------
    HANDLER: Toggle item checklist
@@ -25,18 +46,14 @@ updateProgress(state);
 function handleToggle(catIdx, itemIdx, itemEl) {
   const wasChecked = state[catIdx].items[itemIdx].done;
 
-  /* Update state */
   state[catIdx].items[itemIdx].done = !wasChecked;
 
-  /* Update DOM */
   itemEl.classList.toggle('done');
   updateCatPill(state, catIdx);
   updateProgress(state);
 
-  /* Simpan ke localStorage */
   saveState(state);
 
-  /* Efek confetti saat mencentang */
   if (!wasChecked) {
     const rect = itemEl.getBoundingClientRect();
     spawnConfetti(rect.left + 20, rect.top + 10 + window.scrollY);
@@ -46,23 +63,48 @@ function handleToggle(catIdx, itemIdx, itemEl) {
 /* --------------------------------------------------
    HANDLER: Reset semua progress
    -------------------------------------------------- */
-document.getElementById('resetBtn').addEventListener('click', () => {
-  const konfirmasi = confirm(
-    'Reset semua progress? Centang yang sudah dibuat akan dihapus.'
-  );
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  const konfirmasi = confirm('Reset semua progress? Semua centang akan dihapus.');
   if (!konfirmasi) return;
 
-  /* Reset semua item menjadi false (tidak tercentang) */
   state.forEach(cat => {
-    cat.items.forEach(item => {
-      item.done = false;
-    });
+    cat.items.forEach(item => { item.done = false; });
   });
 
-  /* Hapus localStorage */
-  clearState();
+  await clearState();
 
-  /* Re-render */
   renderChecklist(state, handleToggle);
   updateProgress(state);
 });
+
+/* --------------------------------------------------
+   SYNC STATUS INDICATOR
+   -------------------------------------------------- */
+function showSyncStatus() {
+  const wrap = document.querySelector('.reset-wrap');
+  const indicator = document.createElement('div');
+  indicator.id = 'syncIndicator';
+  indicator.style.cssText = `
+    text-align: center;
+    font-size: 12px;
+    margin-bottom: 12px;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.3s;
+  `;
+
+  indicator.innerHTML = `<span style="color:#22d37a">⬤</span> <span style="color:#6b7280">Sync aktif — perubahan tersimpan di semua perangkat</span>`;
+
+  wrap.insertBefore(indicator, wrap.firstChild);
+}
+
+function flashSyncIndicator() {
+  const el = document.getElementById('syncIndicator');
+  if (!el) return;
+  el.style.opacity = '0.4';
+  setTimeout(() => { el.style.opacity = '1'; }, 400);
+}
+
+/* --------------------------------------------------
+   MULAI
+   -------------------------------------------------- */
+init();
