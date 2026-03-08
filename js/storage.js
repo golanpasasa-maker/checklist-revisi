@@ -1,59 +1,128 @@
 /**
  * storage.js
- * Menangani penyimpanan dan pembacaan state checklist
- * menggunakan localStorage agar progress tersimpan di browser.
+ * Menyimpan & mensync state checklist via Supabase.
+ * Fallback ke localStorage jika offline.
  */
 
-const STORAGE_KEY = 'skripsi-checklist-v1';
+// ============================================================
+//  SUPABASE CONFIG
+// ============================================================
+const SUPABASE_URL  = "https://gsbfitynaoivzxstoknc.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzYmZpdHluYW9pdnp4c3Rva25jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDkyMzYsImV4cCI6MjA4ODQ4NTIzNn0.EP2AYuICTIpGVGP_mAtcctIQk_8D3Qia0MZVp0by3nI";
+const TABLE         = "checklist";
+const ROW_ID        = 1; // ID baris tempat data disimpan
 
-/**
- * Simpan state saat ini ke localStorage.
- * Hanya menyimpan nilai `done` (boolean) per item, bukan seluruh objek.
- * @param {Array} state - Array kategori beserta items
- */
-function saveState(state) {
+const STORAGE_KEY   = "skripsi-checklist-v1";
+
+// Inisialisasi Supabase client
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ============================================================
+//  SAVE
+// ============================================================
+async function saveState(state) {
+  const payload = state.map(cat => cat.items.map(item => item.done));
+
+  // Simpan ke localStorage sebagai cache offline
   try {
-    const payload = state.map(cat =>
-      cat.items.map(item => item.done)
-    );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
-    console.warn('Gagal menyimpan progress:', e);
+    console.warn("localStorage gagal:", e);
+  }
+
+  // Upsert ke Supabase
+  try {
+    await _supabase
+      .from(TABLE)
+      .upsert({ id: ROW_ID, data: JSON.stringify(payload) });
+  } catch (e) {
+    console.warn("Supabase gagal menyimpan:", e);
   }
 }
 
-/**
- * Muat state dari localStorage dan terapkan ke state aktif.
- * Jika belum ada data tersimpan, gunakan nilai default dari data.js.
- * @param {Array} state - Array kategori yang akan di-mutasi
- */
-function loadState(state) {
+// ============================================================
+//  LOAD
+// ============================================================
+async function loadState() {
+  // Coba dari Supabase
+  try {
+    const { data, error } = await _supabase
+      .from(TABLE)
+      .select("data")
+      .eq("id", ROW_ID)
+      .single();
+
+    if (!error && data && data.data) {
+      return JSON.parse(data.data);
+    }
+  } catch (e) {
+    console.warn("Supabase gagal memuat, pakai localStorage:", e);
+  }
+
+  // Fallback localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return; // Belum ada data tersimpan, pakai default
-
-    const payload = JSON.parse(raw);
-
-    payload.forEach((catItems, ci) => {
-      if (!state[ci]) return;
-      catItems.forEach((done, ii) => {
-        if (state[ci].items[ii] !== undefined) {
-          state[ci].items[ii].done = done;
-        }
-      });
-    });
+    if (raw) return JSON.parse(raw);
   } catch (e) {
-    console.warn('Gagal memuat progress:', e);
+    console.warn("localStorage gagal memuat:", e);
   }
+
+  return null;
 }
 
-/**
- * Hapus semua data tersimpan dari localStorage.
- */
-function clearState() {
+// ============================================================
+//  APPLY
+// ============================================================
+function applyState(state, payload) {
+  if (!payload) return;
+  payload.forEach((catItems, ci) => {
+    if (!state[ci]) return;
+    catItems.forEach((done, ii) => {
+      if (state[ci].items[ii] !== undefined) {
+        state[ci].items[ii].done = done;
+      }
+    });
+  });
+}
+
+// ============================================================
+//  CLEAR
+// ============================================================
+async function clearState() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn('Gagal menghapus progress:', e);
+    console.warn("localStorage gagal dihapus:", e);
   }
+
+  try {
+    await _supabase
+      .from(TABLE)
+      .delete()
+      .eq("id", ROW_ID);
+  } catch (e) {
+    console.warn("Supabase gagal dihapus:", e);
+  }
+}
+
+// ============================================================
+//  REALTIME LISTENER
+// ============================================================
+function listenState(onChange) {
+  _supabase
+    .channel("checklist-sync")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: TABLE },
+      (payload) => {
+        if (payload.new && payload.new.data) {
+          try {
+            onChange(JSON.parse(payload.new.data));
+          } catch (e) {
+            console.warn("Gagal parse realtime payload:", e);
+          }
+        }
+      }
+    )
+    .subscribe();
 }
