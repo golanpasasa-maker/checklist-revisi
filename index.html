@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checklist Revisi Skripsi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="wrapper">
+
+    <header>
+      <div class="badge">📋 Revisi Akademik</div>
+      <h1>Checklist Revisi Skripsi</h1>
+      <p class="subtitle">Pantau progres revisi skripsimu secara real-time</p>
+    </header>
+
+    <!-- Progress Card -->
+    <div class="progress-card">
+      <div class="progress-header">
+        <div class="progress-label">Total Progres Revisi</div>
+        <div class="progress-count" id="countDisplay">0 <span>/ 0 selesai</span></div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="mainBar"></div>
+      </div>
+      <div class="mini-stats">
+        <div class="mini-stat"><span class="dot done"></span><span id="doneCount">0 selesai</span></div>
+        <div class="mini-stat"><span class="dot todo"></span><span id="todoCount">0 tersisa</span></div>
+        <div class="mini-stat pct" id="pctDisplay">0%</div>
+      </div>
+    </div>
+
+    <!-- Checklist -->
+    <div id="checklist"></div>
+
+    <!-- Reset Button -->
+    <div class="reset-wrap">
+      <button class="reset-btn" id="resetBtn">🔄 Reset Semua Progress</button>
+    </div>
+
+    <!-- Completion Banner -->
+    <div class="complete-banner" id="completeBanner">
+      <h3>🎉 Semua Revisi Selesai!</h3>
+      <p>Luar biasa! Semua poin checklist telah berhasil diselesaikan. Skripsimu siap! ✨</p>
+    </div>
+
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
